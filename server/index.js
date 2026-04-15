@@ -201,6 +201,38 @@ app.get('/api/agenda-templates', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.post('/api/agenda-templates', auth, async (req, res) => {
+  if (req.user.role === 'manager') return res.status(403).json({ error: 'Forbidden' });
+  const { item_number, title, focus } = req.body;
+  try {
+    const q = await pool.query(
+      `INSERT INTO weekly_plan.agenda_templates (vessel_type, item_number, title, focus) VALUES ('ALL',$1,$2,$3) RETURNING *`,
+      [item_number, title, focus || '']
+    );
+    res.json(q.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/agenda-templates/:id', auth, async (req, res) => {
+  if (req.user.role === 'manager') return res.status(403).json({ error: 'Forbidden' });
+  const { title, focus, item_number } = req.body;
+  try {
+    const q = await pool.query(
+      `UPDATE weekly_plan.agenda_templates SET title=COALESCE($1,title), focus=COALESCE($2,focus), item_number=COALESCE($3,item_number) WHERE id=$4 RETURNING *`,
+      [title, focus, item_number, req.params.id]
+    );
+    res.json(q.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/agenda-templates/:id', auth, async (req, res) => {
+  if (req.user.role === 'manager') return res.status(403).json({ error: 'Forbidden' });
+  try {
+    await pool.query('UPDATE weekly_plan.agenda_templates SET active = false WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/meetings/:mid/remarks', auth, async (req, res) => {
   try {
     const q = await pool.query(`

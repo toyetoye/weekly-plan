@@ -217,6 +217,15 @@ function App() {
     const item = actions.find(a => a.id === actionId);
     const order = ['OPEN','ONGOING','IN HAND','CLOSED'];
     const next = order[(order.indexOf(item.status) + 1) % order.length];
+    if (next === 'CLOSED') {
+      const cond = (item.condition || '').toLowerCase();
+      if (cond.includes('not') || cond.includes('un')) {
+        if (!confirm('This item is marked "' + item.condition + '". Confirm condition is now satisfactory and close?')) return;
+        await updateAction(actionId, { status:'CLOSED', condition:'Satisfactory' });
+        return;
+      }
+      if (!confirm('Close this action item? Confirm condition is satisfactory.')) return;
+    }
     await updateAction(actionId, { status:next });
   };
 
@@ -357,16 +366,24 @@ function App() {
           {/* AGENDA */}
           {tab === "agenda" && (
             <div>
-              <div style={{display:"grid",gridTemplateColumns:"28px 1fr 1.3fr 1.3fr 1.3fr",gap:1,padding:"6px 8px",background:t.s2,borderRadius:"6px 6px 0 0"}}>
-                {["#","Agenda item","Vessel remark","Shore comment","New actions"].map((h,i) => <span key={i} style={{fontSize:9,fontWeight:600,color:t.lime,letterSpacing:.4,textTransform:"uppercase"}}>{h}</span>)}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                <span style={{fontSize:12,fontWeight:600,color:t.t2}}>Meeting agenda ({remarks.length} items)</span>
+                {user.role !== 'manager' && <Btn variant="primary" t={t} onClick={() => setShowAdminModal({type:'agenda',mode:'add'})} style={{fontSize:10}}>+ Add agenda item</Btn>}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"28px 1fr 1.3fr 1.3fr 1.3fr 36px",gap:1,padding:"6px 8px",background:t.s2,borderRadius:"6px 6px 0 0"}}>
+                {["#","Agenda item","Vessel remark","Shore comment","New actions",""].map((h,i) => <span key={i} style={{fontSize:9,fontWeight:600,color:t.lime,letterSpacing:.4,textTransform:"uppercase"}}>{h}</span>)}
               </div>
               {remarks.map(r => (
-                <div key={r.id} style={{display:"grid",gridTemplateColumns:"28px 1fr 1.3fr 1.3fr 1.3fr",gap:1,padding:"5px 8px",background:t.surface,borderBottom:"1px solid "+t.border}}>
+                <div key={r.id} style={{display:"grid",gridTemplateColumns:"28px 1fr 1.3fr 1.3fr 1.3fr 36px",gap:1,padding:"5px 8px",background:t.surface,borderBottom:"1px solid "+t.border}}>
                   <span style={{color:t.t3,fontSize:12,fontWeight:600}}>{r.item_number}</span>
                   <div><div style={{color:t.t1,fontSize:11,fontWeight:600}}>{r.title}</div><div style={{color:t.t3,fontSize:9}}>{r.focus}</div></div>
                   <Cell value={r.vessel_remark} onChange={v => updateRemark(r.id,'vessel_remark',v)} multi disabled={!canEditV} t={t} />
                   <Cell value={r.shore_comment} onChange={v => updateRemark(r.id,'shore_comment',v)} multi disabled={!canEditS} t={t} />
                   <Cell value={r.new_actions} onChange={v => updateRemark(r.id,'new_actions',v)} multi disabled={!canEditS} t={t} />
+                  {user.role !== 'manager' && <div style={{display:"flex",gap:2,alignItems:"start",paddingTop:2}}>
+                    <button onClick={() => setShowAdminModal({type:'agenda',mode:'edit',item:{id:r.agenda_item_id,item_number:r.item_number,title:r.title,focus:r.focus}})} style={{background:"none",border:"none",color:t.blue,cursor:"pointer",fontSize:9,fontFamily:"inherit"}}>{"\u270e"}</button>
+                    <button onClick={async () => { if(confirm('Remove agenda item "'+r.title+'"?')){ await api('/agenda-templates/'+r.agenda_item_id,{method:'DELETE'}); setTemplates(prev=>prev.filter(t=>t.id!==r.agenda_item_id)); setRemarks(prev=>prev.filter(x=>x.agenda_item_id!==r.agenda_item_id)); } }} style={{background:"none",border:"none",color:t.red,cursor:"pointer",fontSize:9,fontFamily:"inherit"}}>{"\u00d7"}</button>
+                  </div>}
                 </div>
               ))}
             </div>
@@ -388,10 +405,7 @@ function App() {
                   <button key={s} onClick={() => setFSt(s)} style={fB(fSt===s)}>{s==="ALL"?"All ("+openCt+")":s+" ("+actions.filter(a=>a.status===s).length+")"}</button>
                 ))}
                 {user.role !== 'manager' && <Btn variant="primary" t={t} onClick={() => {
-                  const eq = prompt("Equipment name:");
-                  if (!eq) return;
-                  const cat = prompt("Category (A-K):", "A");
-                  addAction({ category:cat||"A", equipment:eq, condition:"Satisfactory", action_plan:"", status:"OPEN" });
+                  setShowAdminModal({type:'action',mode:'add'});
                 }} style={{marginLeft:8,fontSize:10}}>+ Add item</Btn>}
               </div>
               {Object.entries(grp).sort(([a],[b])=>a.localeCompare(b)).map(([cat,items]) => (
@@ -407,12 +421,16 @@ function App() {
                   {items.map(item => (
                     <div key={item.id} style={{display:"grid",gridTemplateColumns:".9fr .5fr 1.5fr 1fr 70px 60px 40px",gap:6,padding:"6px 8px",background:t.surface,borderBottom:"1px solid "+t.border,alignItems:"start"}}>
                       <div style={{color:t.t1,fontSize:11,fontWeight:600}}>{item.equipment}</div>
-                      <div style={{color:(item.condition||'').toLowerCase().includes('not')||(item.condition||'').toLowerCase().includes('un')?t.red:t.lime,fontSize:10}}>{item.condition}</div>
+                      <select value={item.condition||'Satisfactory'} disabled={user.role==='manager'} onChange={e => updateAction(item.id,{condition:e.target.value})} style={{padding:"2px 4px",borderRadius:3,border:"1px solid "+t.border,background:t.surface,fontSize:10,fontFamily:"inherit",cursor:user.role==='manager'?"default":"pointer",color:(item.condition||'').toLowerCase().includes('not')||(item.condition||'').toLowerCase().includes('un')?t.red:t.lime}}>
+                        <option style={{color:t.lime}} value="Satisfactory">Satisfactory</option>
+                        <option style={{color:t.red}} value="NOT SATISFACTORY">Not Satisfactory</option>
+                        <option style={{color:t.red}} value="Unsatisfactory">Unsatisfactory</option>
+                      </select>
                       <Cell value={item.action_plan} onChange={v => updateAction(item.id,{action_plan:v})} multi disabled={user.role==='manager'} t={t} />
                       <Cell value={item.supt_comment} onChange={v => updateAction(item.id,{supt_comment:v})} multi disabled={!canEditS} t={t} placeholder={canEditS?"Supt comment...":""} />
                       <Pill status={item.status} t={t} onClick={() => cycleStatus(item.id)} />
                       <span style={{color:t.t3,fontSize:9}}>{item.date_reported?.slice(0,10)||"\u2014"}</span>
-                      {user.role !== 'manager' && <button onClick={() => deleteAction(item.id)} style={{background:"none",border:"none",color:t.red,cursor:"pointer",fontSize:9,fontFamily:"inherit"}}>{"\u00d7"}</button>}
+                      {user.role !== 'manager' && <div style={{display:"flex",gap:2}}><button onClick={() => setShowAdminModal({type:'action',mode:'edit',item})} style={{background:"none",border:"none",color:t.blue,cursor:"pointer",fontSize:9,fontFamily:"inherit"}}>{"\u270e"}</button><button onClick={() => deleteAction(item.id)} style={{background:"none",border:"none",color:t.red,cursor:"pointer",fontSize:9,fontFamily:"inherit"}}>{"\u00d7"}</button></div>}
                     </div>
                   ))}
                 </div>
@@ -475,7 +493,11 @@ function App() {
                   <div key={u.id} style={{display:"grid",gridTemplateColumns:"120px 1fr 100px 1fr 80px",padding:"8px",background:t.surface,borderBottom:"1px solid "+t.border,alignItems:"center"}}>
                     <span style={{color:t.t1,fontSize:12,fontWeight:500}}>{u.username}</span>
                     <span style={{color:t.t2,fontSize:11}}>{u.display_name}</span>
-                    <Pill status={u.role==='admin'?'CLOSED':u.role==='superintendent'?'ONGOING':'OPEN'} t={t} />
+                    <span style={{display:"inline-block",padding:"2px 9px",borderRadius:16,fontSize:10,fontWeight:600,
+                      background:u.role==='admin'?t.blue+"18":u.role==='superintendent'?t.lime+"18":u.role==='vessel'?t.amber+"18":t.t3+"18",
+                      color:u.role==='admin'?t.blue:u.role==='superintendent'?t.lime:u.role==='vessel'?t.amber:t.t3,
+                      border:"1px solid "+(u.role==='admin'?t.blue:u.role==='superintendent'?t.lime:u.role==='vessel'?t.amber:t.t3)+"40",
+                      textTransform:"capitalize"}}>{u.role}</span>
                     <span style={{color:t.t3,fontSize:10}}>{(u.vessel_names||[]).join(', ')||'\u2014'}</span>
                     <div style={{display:"flex",gap:6}}>
                       <button onClick={() => setShowAdminModal({type:'user',mode:'edit',item:u})} style={{background:"none",border:"none",color:t.blue,cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>{"\u270e"}</button>
@@ -583,6 +605,77 @@ function App() {
                 );
               };
               return <UserForm />;
+            }
+            if (m.type === 'action') {
+              const ActionForm = () => {
+                const [cat, setCatVal] = useState(m.item?.category || 'A');
+                const [eq, setEq] = useState(m.item?.equipment || '');
+                const [cond, setCond] = useState(m.item?.condition || 'Satisfactory');
+                const [actionPlan, setActionPlan] = useState(m.item?.action_plan || '');
+                const [status, setStatusVal] = useState(m.item?.status || 'OPEN');
+                const [reported, setReported] = useState(m.item?.date_reported?.slice(0,10) || new Date().toISOString().slice(0,10));
+                const [suptCmt, setSuptCmt] = useState(m.item?.supt_comment || '');
+                const save = async () => {
+                  if (!eq) return alert('Equipment name required');
+                  const body = { category:cat, equipment:eq, condition:cond, action_plan:actionPlan, status, date_reported:reported, supt_comment:suptCmt };
+                  if (m.mode === 'add') { await addAction(body); }
+                  else { await updateAction(m.item.id, body); }
+                  setShowAdminModal(null);
+                };
+                return (
+                  <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <div style={{background:t.surface,borderRadius:10,padding:20,maxWidth:520,width:"95%",border:"1px solid "+t.border}}>
+                      <div style={{fontSize:14,fontWeight:600,color:t.t1,marginBottom:12}}>{m.mode==='add'?'New action item':'Edit action item'}</div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                        <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Category</div><select value={cat} onChange={e=>setCatVal(e.target.value)} style={{width:"100%",padding:"5px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:11,fontFamily:"inherit"}}>{CATS.filter(c=>c.code!=='CREW').map(c=><option key={c.code} value={c.code}>{c.code} {"\u2014"} {c.title}</option>)}</select></div>
+                        <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Equipment</div><input value={eq} onChange={e=>setEq(e.target.value)} style={{width:"100%",padding:"5px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:11,fontFamily:"inherit",boxSizing:"border-box"}} /></div>
+                        <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Condition</div><select value={cond} onChange={e=>setCond(e.target.value)} style={{width:"100%",padding:"5px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:11,fontFamily:"inherit"}}><option>Satisfactory</option><option>NOT SATISFACTORY</option><option>Unsatisfactory</option></select></div>
+                        <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Status</div><select value={status} onChange={e=>setStatusVal(e.target.value)} style={{width:"100%",padding:"5px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:11,fontFamily:"inherit"}}>{['OPEN','ONGOING','IN HAND','CLOSED'].map(s=><option key={s}>{s}</option>)}</select></div>
+                        <div style={{gridColumn:"1/-1"}}><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Action plan</div><textarea value={actionPlan} onChange={e=>setActionPlan(e.target.value)} rows={3} style={{width:"100%",padding:"5px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:11,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}} /></div>
+                        <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Date reported</div><input type="date" value={reported} onChange={e=>setReported(e.target.value)} style={{width:"100%",padding:"5px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:11,fontFamily:"inherit",boxSizing:"border-box"}} /></div>
+                        <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Supt comment</div><input value={suptCmt} onChange={e=>setSuptCmt(e.target.value)} style={{width:"100%",padding:"5px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:11,fontFamily:"inherit",boxSizing:"border-box"}} /></div>
+                      </div>
+                      <div style={{display:"flex",gap:8,marginTop:14,justifyContent:"flex-end"}}><Btn variant="ghost" t={t} onClick={()=>setShowAdminModal(null)}>Cancel</Btn><Btn variant="primary" t={t} onClick={save}>Save</Btn></div>
+                    </div>
+                  </div>
+                );
+              };
+              return <ActionForm />;
+            }
+            if (m.type === 'agenda') {
+              const AgendaForm = () => {
+                const [title, setTitle] = useState(m.item?.title || '');
+                const [focus, setFocus] = useState(m.item?.focus || '');
+                const [itemNum, setItemNum] = useState(m.item?.item_number || (templates.length + 1));
+                const save = async () => {
+                  if (!title) return alert('Title required');
+                  if (m.mode === 'add') {
+                    const created = await api('/agenda-templates', { method:'POST', body:{ item_number:itemNum, title, focus } });
+                    setTemplates(prev => [...prev, created].sort((a,b) => a.item_number - b.item_number));
+                  } else {
+                    const updated = await api('/agenda-templates/' + m.item.id, { method:'PUT', body:{ item_number:itemNum, title, focus } });
+                    setTemplates(prev => prev.map(t => t.id === m.item.id ? updated : t));
+                  }
+                  setShowAdminModal(null);
+                  if (curMeeting) { const r = await api('/meetings/' + curMeeting.id + '/remarks'); setRemarks(r); }
+                };
+                return (
+                  <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <div style={{background:t.surface,borderRadius:10,padding:20,maxWidth:440,width:"95%",border:"1px solid "+t.border}}>
+                      <div style={{fontSize:14,fontWeight:600,color:t.t1,marginBottom:12}}>{m.mode==='add'?'New agenda item':'Edit agenda item'}</div>
+                      <div style={{display:"grid",gap:10}}>
+                        <div style={{display:"grid",gridTemplateColumns:"60px 1fr",gap:10}}>
+                          <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Item #</div><input type="number" value={itemNum} onChange={e=>setItemNum(parseInt(e.target.value)||1)} style={{width:"100%",padding:"5px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:11,fontFamily:"inherit",boxSizing:"border-box"}} /></div>
+                          <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Title</div><input value={title} onChange={e=>setTitle(e.target.value)} style={{width:"100%",padding:"5px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:11,fontFamily:"inherit",boxSizing:"border-box"}} /></div>
+                        </div>
+                        <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Key focus areas</div><textarea value={focus} onChange={e=>setFocus(e.target.value)} rows={2} style={{width:"100%",padding:"5px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:11,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}} /></div>
+                      </div>
+                      <div style={{display:"flex",gap:8,marginTop:14,justifyContent:"flex-end"}}><Btn variant="ghost" t={t} onClick={()=>setShowAdminModal(null)}>Cancel</Btn><Btn variant="primary" t={t} onClick={save}>Save</Btn></div>
+                    </div>
+                  </div>
+                );
+              };
+              return <AgendaForm />;
             }
             return null;
           })()}
