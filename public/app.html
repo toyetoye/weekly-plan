@@ -178,7 +178,8 @@ function App() {
   const filledCt = remarks.filter(r => r.vessel_remark).length;
   const crewDueCt = crew.filter(c => { const f = fmtDue(c.joined, c.contract_months); return f.days !== null && f.days <= 14; }).length;
   const canEditV = (user.role === 'vessel' || user.role === 'admin') && curMeeting?.status !== 'completed';
-  const canEditS = (user.role === 'superintendent' || user.role === 'admin') && (curMeeting?.status === 'in_progress' || curMeeting?.status === 'completed');
+  const canEditS = (user.role === 'superintendent' || user.role === 'admin') && curMeeting?.status !== 'draft';
+  const canEditActions = user.role !== 'manager';
 
   const advanceMeeting = async () => {
     if (!curMeeting) return;
@@ -399,11 +400,16 @@ function App() {
                     <span style={{color:t.lime,fontSize:12,fontWeight:700}}>{cat}</span>
                     <span style={{color:t.t2,fontSize:10}}>{catTitle(cat)}</span>
                   </div>
+                  {/* Column headers */}
+                  <div style={{display:"grid",gridTemplateColumns:".9fr .5fr 1.5fr 1fr 70px 60px 40px",gap:6,padding:"4px 8px",background:t.s2,fontSize:9,fontWeight:600,color:t.t3,textTransform:"uppercase",letterSpacing:.3}}>
+                    <span>Equipment</span><span>Condition</span><span>Action plan</span><span>Supt comment</span><span>Status</span><span>Reported</span><span></span>
+                  </div>
                   {items.map(item => (
-                    <div key={item.id} style={{display:"grid",gridTemplateColumns:"1fr .6fr 2fr 80px 70px 50px",gap:6,padding:"6px 8px",background:t.surface,borderBottom:"1px solid "+t.border,alignItems:"start"}}>
+                    <div key={item.id} style={{display:"grid",gridTemplateColumns:".9fr .5fr 1.5fr 1fr 70px 60px 40px",gap:6,padding:"6px 8px",background:t.surface,borderBottom:"1px solid "+t.border,alignItems:"start"}}>
                       <div style={{color:t.t1,fontSize:11,fontWeight:600}}>{item.equipment}</div>
                       <div style={{color:(item.condition||'').toLowerCase().includes('not')||(item.condition||'').toLowerCase().includes('un')?t.red:t.lime,fontSize:10}}>{item.condition}</div>
                       <Cell value={item.action_plan} onChange={v => updateAction(item.id,{action_plan:v})} multi disabled={user.role==='manager'} t={t} />
+                      <Cell value={item.supt_comment} onChange={v => updateAction(item.id,{supt_comment:v})} multi disabled={!canEditS} t={t} placeholder={canEditS?"Supt comment...":""} />
                       <Pill status={item.status} t={t} onClick={() => cycleStatus(item.id)} />
                       <span style={{color:t.t3,fontSize:9}}>{item.date_reported?.slice(0,10)||"\u2014"}</span>
                       {user.role !== 'manager' && <button onClick={() => deleteAction(item.id)} style={{background:"none",border:"none",color:t.red,cursor:"pointer",fontSize:9,fontFamily:"inherit"}}>{"\u00d7"}</button>}
