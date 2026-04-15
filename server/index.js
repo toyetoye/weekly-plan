@@ -128,8 +128,8 @@ app.post('/api/vessels/:vid/meetings', auth, async (req, res) => {
       );
       return res.json(existing.rows[0]);
     }
-    // Create agenda remark slots
-    const templates = await pool.query('SELECT id FROM weekly_plan.agenda_templates WHERE active = true ORDER BY item_number');
+    // Create agenda remark slots for this vessel's templates
+    const templates = await pool.query('SELECT id FROM weekly_plan.agenda_templates WHERE vessel_id = $1 AND active = true ORDER BY item_number', [req.params.vid]);
     for (const t of templates.rows) {
       await pool.query(
         `INSERT INTO weekly_plan.agenda_remarks (meeting_id, agenda_item_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
@@ -194,6 +194,14 @@ app.put('/api/meetings/:id/status', auth, async (req, res) => {
 });
 
 // ─── Agenda ───
+app.get('/api/vessels/:vid/agenda-templates', auth, async (req, res) => {
+  try {
+    const q = await pool.query('SELECT * FROM weekly_plan.agenda_templates WHERE vessel_id = $1 AND active = true ORDER BY item_number', [req.params.vid]);
+    res.json(q.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Keep legacy route for initial load
 app.get('/api/agenda-templates', auth, async (req, res) => {
   try {
     const q = await pool.query('SELECT * FROM weekly_plan.agenda_templates WHERE active = true ORDER BY item_number');
@@ -201,14 +209,39 @@ app.get('/api/agenda-templates', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/agenda-templates', auth, async (req, res) => {
+app.post('/api/vessels/:vid/agenda-templates', auth, async (req, res) => {
   if (req.user.role === 'manager') return res.status(403).json({ error: 'Forbidden' });
-  const { item_number, title, focus } = req.body;
+  const { item_number, title, focus, meeting_id } = req.body;
   try {
     const q = await pool.query(
-      `INSERT INTO weekly_plan.agenda_templates (vessel_type, item_number, title, focus) VALUES ('ALL',$1,$2,$3) RETURNING *`,
-      [item_number, title, focus || '']
+      `INSERT INTO weekly_plan.agenda_templates (vessel_id, vessel_type, item_number, title, focus) VALUES ($1,'ALL',$2,$3,$4) RETURNING *`,
+      [req.params.vid, item_number, title, focus || '']
     );
+    // Also create agenda_remarks slot for the current meeting
+    if (meeting_id) {
+      await pool.query(
+        `INSERT INTO weekly_plan.agenda_remarks (meeting_id, agenda_item_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [meeting_id, q.rows[0].id]
+      );
+    }
+    res.json(q.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/agenda-templates', auth, async (req, res) => {
+  if (req.user.role === 'manager') return res.status(403).json({ error: 'Forbidden' });
+  const { vessel_id, item_number, title, focus, meeting_id } = req.body;
+  try {
+    const q = await pool.query(
+      `INSERT INTO weekly_plan.agenda_templates (vessel_id, vessel_type, item_number, title, focus) VALUES ($1,'ALL',$2,$3,$4) RETURNING *`,
+      [vessel_id, item_number, title, focus || '']
+    );
+    if (meeting_id) {
+      await pool.query(
+        `INSERT INTO weekly_plan.agenda_remarks (meeting_id, agenda_item_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [meeting_id, q.rows[0].id]
+      );
+    }
     res.json(q.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

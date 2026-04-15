@@ -127,7 +127,6 @@ function App() {
   // Load vessels on mount
   useEffect(() => {
     api('/vessels').then(v => { setVessels(v); if (v.length) setSelV(v[0].id); });
-    api('/agenda-templates').then(setTemplates);
     if (user.role === 'admin') {
       api('/admin/users').then(setAdminUsers).catch(() => {});
       api('/vessels').then(setAdminVessels).catch(() => {});
@@ -142,10 +141,12 @@ function App() {
       api('/vessels/' + selV + '/crew'),
       api('/vessels/' + selV + '/meetings'),
       api('/vessels/' + selV + '/actions'),
-    ]).then(([c, m, a]) => {
+      api('/vessels/' + selV + '/agenda-templates'),
+    ]).then(([c, m, a, tmpl]) => {
       setCrew(c);
       setMeetings(m);
       setActions(a);
+      setTemplates(tmpl);
       // Find or create current week's meeting
       const now = new Date();
       const wk = getWeekNumber(now);
@@ -754,7 +755,7 @@ function App() {
                 const save = async () => {
                   if (!title) return alert('Title required');
                   if (m.mode === 'add') {
-                    const created = await api('/agenda-templates', { method:'POST', body:{ item_number:itemNum, title, focus } });
+                    const created = await api('/vessels/' + selV + '/agenda-templates', { method:'POST', body:{ item_number:itemNum, title, focus, meeting_id:curMeeting?.id } });
                     setTemplates(prev => [...prev, created].sort((a,b) => a.item_number - b.item_number));
                   } else {
                     const updated = await api('/agenda-templates/' + m.item.id, { method:'PUT', body:{ item_number:itemNum, title, focus } });

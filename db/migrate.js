@@ -72,9 +72,10 @@ CREATE TABLE IF NOT EXISTS weekly_plan.voyage_info (
   tech_onboard VARCHAR(120)
 );
 
--- ─── Agenda template (configurable per vessel type) ───
+-- ─── Agenda template (per vessel) ───
 CREATE TABLE IF NOT EXISTS weekly_plan.agenda_templates (
   id SERIAL PRIMARY KEY,
+  vessel_id INT REFERENCES weekly_plan.vessels(id) ON DELETE CASCADE,
   vessel_type VARCHAR(40),
   item_number INT NOT NULL,
   title VARCHAR(200) NOT NULL,
@@ -152,6 +153,37 @@ async function migrate() {
   try {
     await client.query(SQL);
     console.log('Schema created successfully');
+
+    // Migration: add vessel_id column if missing (for existing deployments)
+    const colCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns 
+      WHERE table_schema='weekly_plan' AND table_name='agenda_templates' AND column_name='vessel_id'
+    `);
+    if (!colCheck.rows.length) {
+      await client.query('ALTER TABLE weekly_plan.agenda_templates ADD COLUMN vessel_id INT REFERENCES weekly_plan.vessels(id) ON DELETE CASCADE');
+      console.log('Added vessel_id column to agenda_templates');
+    }
+
+    // Migration: copy global templates (vessel_id IS NULL) to each vessel
+    const globalTemplates = await client.query('SELECT * FROM weekly_plan.agenda_templates WHERE vessel_id IS NULL AND active = true');
+    if (globalTemplates.rows.length > 0) {
+      const vessels = await client.query('SELECT id FROM weekly_plan.vessels WHERE active = true');
+      for (const v of vessels.rows) {
+        const existing = await client.query('SELECT COUNT(*) FROM weekly_plan.agenda_templates WHERE vessel_id = $1', [v.id]);
+        if (parseInt(existing.rows[0].count) === 0) {
+          for (const tmpl of globalTemplates.rows) {
+            await client.query(
+              'INSERT INTO weekly_plan.agenda_templates (vessel_id, vessel_type, item_number, title, focus) VALUES ($1,$2,$3,$4,$5)',
+              [v.id, tmpl.vessel_type, tmpl.item_number, tmpl.title, tmpl.focus]
+            );
+          }
+          console.log('Copied ' + globalTemplates.rows.length + ' templates to vessel ' + v.id);
+        }
+      }
+      // Deactivate global templates now that per-vessel copies exist
+      await client.query('UPDATE weekly_plan.agenda_templates SET active = false WHERE vessel_id IS NULL');
+      console.log('Deactivated global templates');
+    }
   } catch (err) {
     console.error('Migration error:', err.message);
     throw err;

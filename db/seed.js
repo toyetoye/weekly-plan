@@ -125,14 +125,16 @@ async function seed() {
       );
     }
 
-    // Agenda templates (same for all vessel types initially)
-    for (const [num, title, focus] of AGENDA_ITEMS) {
-      await client.query(
-        `INSERT INTO weekly_plan.agenda_templates (vessel_type, item_number, title, focus) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
-        ['ALL', num, title, focus]
-      );
+    // Agenda templates (per vessel)
+    for (const [vName, vId] of Object.entries(vesselMap)) {
+      for (const [num, title, focus] of AGENDA_ITEMS) {
+        await client.query(
+          `INSERT INTO weekly_plan.agenda_templates (vessel_id, vessel_type, item_number, title, focus) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
+          [vId, 'ALL', num, title, focus]
+        );
+      }
     }
-    console.log('Agenda templates seeded:', AGENDA_ITEMS.length);
+    console.log('Agenda templates seeded:', AGENDA_ITEMS.length, 'items x', Object.keys(vesselMap).length, 'vessels');
 
     // PH2 crew
     const ph2Id = vesselMap['LNG Port Harcourt 2'];
