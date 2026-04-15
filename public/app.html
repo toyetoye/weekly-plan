@@ -333,45 +333,70 @@ function App() {
             const yr = curMeeting?.year || new Date().getFullYear();
             const completedWks = new Set(meetings.filter(m => m.status === 'completed' && m.year === yr).map(m => m.week_number));
             const activeWk = curMeeting?.week_number;
-            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-            const weeksInMonth = [5,4,4,5,4,4,5,4,5,4,4,5]; // approximate
-            let wk = 1;
+            // Get Monday of ISO week
+            const getMonday = (y, w) => {
+              const jan4 = new Date(y, 0, 4);
+              const d = jan4.getDay() || 7;
+              const mon = new Date(jan4);
+              mon.setDate(jan4.getDate() - d + 1 + (w - 1) * 7);
+              return mon;
+            };
+            const fmtShort = (d) => d.getDate() + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+            const weeks = [];
+            for (let w = 1; w <= 52; w++) {
+              const completed = completedWks.has(w);
+              const isCurrent = w === activeWk;
+              const isPast = w < (activeWk || 99);
+              const missed = isPast && !completed && !isCurrent;
+              const mon = getMonday(yr, w);
+              weeks.push({ w, completed, isCurrent, missed, isPast, date: fmtShort(mon) });
+            }
+            const viewWeek = (w) => {
+              const mtg = meetings.find(m => m.week_number === w && m.year === yr);
+              if (mtg) { setTab("history"); }
+            };
             return (
-              <div style={{background:t.s2,borderRadius:8,padding:"10px 12px",border:"1px solid "+t.border,marginBottom:12}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                  <span style={{fontSize:10,fontWeight:600,color:t.lime,letterSpacing:.8,textTransform:"uppercase"}}>Meeting calendar {yr}</span>
-                  <div style={{display:"flex",gap:10,fontSize:9,color:t.t3}}>
-                    <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:2,background:t.lime,display:"inline-block"}}></span> Completed</span>
-                    <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:2,background:t.red,display:"inline-block"}}></span> Missed</span>
-                    <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:2,background:t.blue,border:"1px solid "+t.blue,display:"inline-block"}}></span> Current</span>
-                    <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:2,background:t.s3,display:"inline-block"}}></span> Future</span>
+              <div style={{background:t.s2,borderRadius:8,padding:"8px 10px",border:"1px solid "+t.border,marginBottom:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                  <span style={{fontSize:9,fontWeight:600,color:t.lime,letterSpacing:.8,textTransform:"uppercase"}}>Meeting calendar {yr}</span>
+                  <div style={{display:"flex",gap:8,fontSize:8,color:t.t3}}>
+                    <span style={{display:"flex",alignItems:"center",gap:2}}><span style={{width:6,height:6,borderRadius:1,background:t.lime,display:"inline-block"}}></span>Done</span>
+                    <span style={{display:"flex",alignItems:"center",gap:2}}><span style={{width:6,height:6,borderRadius:1,background:t.red,display:"inline-block"}}></span>Missed</span>
+                    <span style={{display:"flex",alignItems:"center",gap:2}}><span style={{width:6,height:6,borderRadius:1,background:t.blue,display:"inline-block"}}></span>Current</span>
                   </div>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(12, 1fr)",gap:4}}>
-                  {months.map((month, mi) => {
-                    const numWks = weeksInMonth[mi];
-                    const cells = [];
-                    for (let i = 0; i < numWks && wk <= 52; i++, wk++) {
-                      const w = wk;
-                      const completed = completedWks.has(w);
-                      const isCurrent = w === activeWk;
-                      const isPast = w < (activeWk || 99);
-                      const missed = isPast && !completed && !isCurrent;
-                      const bg = isCurrent ? t.blue : completed ? t.lime : missed ? t.red : t.s3;
-                      const opacity = isCurrent ? 1 : completed ? 0.8 : missed ? 0.6 : 0.3;
-                      cells.push(
-                        <div key={w} title={"W" + w + (completed?" \u2713":missed?" missed":isCurrent?" (current)":"")} style={{
-                          width:"100%",aspectRatio:"1",borderRadius:2,background:bg,opacity,
-                          border:isCurrent?"2px solid "+t.blue:"none",cursor:"pointer",
-                          display:"flex",alignItems:"center",justifyContent:"center",
-                          fontSize:7,color:completed||isCurrent?"#fff":t.t3,fontWeight:600
-                        }}>{w}</div>
-                      );
-                    }
+                <div style={{display:"grid",gridTemplateColumns:"repeat(26, 1fr)",gap:2}}>
+                  {weeks.slice(0,26).map(wk => {
+                    const bg = wk.isCurrent ? t.blue : wk.completed ? t.lime : wk.missed ? t.red+"90" : t.s3;
                     return (
-                      <div key={mi}>
-                        <div style={{fontSize:8,color:t.t3,textAlign:"center",marginBottom:3,fontWeight:600}}>{month}</div>
-                        <div style={{display:"grid",gridTemplateRows:"repeat("+numWks+", 1fr)",gap:2}}>{cells}</div>
+                      <div key={wk.w} onClick={() => viewWeek(wk.w)} style={{
+                        padding:"3px 1px",borderRadius:3,background:bg,cursor:"pointer",
+                        border:wk.isCurrent?"1.5px solid "+t.blue:"1px solid transparent",
+                        textAlign:"center",opacity:wk.completed||wk.isCurrent||wk.missed?1:0.35,
+                        transition:"opacity .15s",
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.opacity="1"}
+                      onMouseLeave={e => {if(!wk.completed&&!wk.isCurrent&&!wk.missed) e.currentTarget.style.opacity="0.35";}}>
+                        <div style={{fontSize:8,fontWeight:600,color:wk.completed||wk.isCurrent?"#fff":wk.missed?"#fff":t.t2}}>W{wk.w}</div>
+                        <div style={{fontSize:6,color:wk.completed||wk.isCurrent?"rgba(255,255,255,.7)":wk.missed?"rgba(255,255,255,.6)":t.t3,lineHeight:1}}>{wk.date}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(26, 1fr)",gap:2,marginTop:2}}>
+                  {weeks.slice(26).map(wk => {
+                    const bg = wk.isCurrent ? t.blue : wk.completed ? t.lime : wk.missed ? t.red+"90" : t.s3;
+                    return (
+                      <div key={wk.w} onClick={() => viewWeek(wk.w)} style={{
+                        padding:"3px 1px",borderRadius:3,background:bg,cursor:"pointer",
+                        border:wk.isCurrent?"1.5px solid "+t.blue:"1px solid transparent",
+                        textAlign:"center",opacity:wk.completed||wk.isCurrent||wk.missed?1:0.35,
+                        transition:"opacity .15s",
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.opacity="1"}
+                      onMouseLeave={e => {if(!wk.completed&&!wk.isCurrent&&!wk.missed) e.currentTarget.style.opacity="0.35";}}>
+                        <div style={{fontSize:8,fontWeight:600,color:wk.completed||wk.isCurrent?"#fff":wk.missed?"#fff":t.t2}}>W{wk.w}</div>
+                        <div style={{fontSize:6,color:wk.completed||wk.isCurrent?"rgba(255,255,255,.7)":wk.missed?"rgba(255,255,255,.6)":t.t3,lineHeight:1}}>{wk.date}</div>
                       </div>
                     );
                   })}
@@ -501,8 +526,8 @@ function App() {
                   The defect register is managed in the FORCAP EOM Logbook. Open items from the logbook are displayed here for reference during the weekly meeting. Changes made in the logbook are reflected here automatically.
                 </div>
                 <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
-                  <a href="https://eom.forcap.io" target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 20px",borderRadius:6,background:t.lime,color:"#0A0F1C",fontSize:12,fontWeight:600,textDecoration:"none",fontFamily:"inherit"}}>Open EOM Logbook {"\u2197"}</a>
-                  <Btn variant="ghost" t={t} onClick={() => window.open('https://eom.forcap.io','_blank')} style={{fontSize:12}}>View defect list {"\u2197"}</Btn>
+                  <a href="https://logbook.forcap.io" target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 20px",borderRadius:6,background:t.lime,color:"#0A0F1C",fontSize:12,fontWeight:600,textDecoration:"none",fontFamily:"inherit"}}>Open EOM Logbook {"\u2197"}</a>
+                  <Btn variant="ghost" t={t} onClick={() => window.open('https://logbook.forcap.io','_blank')} style={{fontSize:12}}>View defect list {"\u2197"}</Btn>
                 </div>
               </div>
 
