@@ -118,6 +118,9 @@ function App() {
   const [actions, setActions] = useState([]);
   const [tab, setTab] = useState("agenda");
   const [loading, setLoading] = useState(true);
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [adminVessels, setAdminVessels] = useState([]);
+  const [showAdminModal, setShowAdminModal] = useState(null); // {type:'user'|'vessel', mode:'add'|'edit', item?}
 
   const t = THEMES[theme];
 
@@ -125,6 +128,10 @@ function App() {
   useEffect(() => {
     api('/vessels').then(v => { setVessels(v); if (v.length) setSelV(v[0].id); });
     api('/agenda-templates').then(setTemplates);
+    if (user.role === 'admin') {
+      api('/admin/users').then(setAdminUsers).catch(() => {});
+      api('/vessels').then(setAdminVessels).catch(() => {});
+    }
   }, []);
 
   // Load vessel data when selection changes
@@ -241,7 +248,7 @@ function App() {
       {/* SIDEBAR */}
       <div style={{width:210,background:t.surface,borderRight:"1px solid "+t.border,display:"flex",flexDirection:"column",flexShrink:0}}>
         <div style={{padding:"10px 12px",borderBottom:"1px solid "+t.border,display:"flex",alignItems:"center",gap:8}}>
-          <div style={{width:28,height:28,borderRadius:5,background:t.navy,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:t.lime}}>F</div>
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAbCAIAAACBclo5AAABCGlDQ1BJQ0MgUHJvZmlsZQAAeJxjYGA8wQAELAYMDLl5JUVB7k4KEZFRCuwPGBiBEAwSk4sLGHADoKpv1yBqL+viUYcLcKakFicD6Q9ArFIEtBxopAiQLZIOYWuA2EkQtg2IXV5SUAJkB4DYRSFBzkB2CpCtkY7ETkJiJxcUgdT3ANk2uTmlyQh3M/Ck5oUGA2kOIJZhKGYIYnBncAL5H6IkfxEDg8VXBgbmCQixpJkMDNtbGRgkbiHEVBYwMPC3MDBsO48QQ4RJQWJRIliIBYiZ0tIYGD4tZ2DgjWRgEL7AwMAVDQsIHG5TALvNnSEfCNMZchhSgSKeDHkMyQx6QJYRgwGDIYMZAKbWPz9HbOBQAAACX0lEQVR42u2WS2sUQRSFz62q7nl0ZyYk0QnjBDVoDArxAUFQTHQRBEWCgu4jIu4k+Ad0p2tduNAfkK2IrtRVfEQQomCUEIxgSJDxQcxknOmue110UCGLdOdBEHMXvSiq+e65p+pQxMxYj1JYp/r/wGZ5v8miFVprsAAEKFrUAkFkLcGKIEA9lEgjLXwptJJStCZgERDR90pw4ub4dM0x+Sx5GcdLZz1nNqRLnTK4x4QMTasNZhGj6NaDyWfDM2jyQHPwPXhppFINzeZ0Xx6SwOm4YGYxWr398OXa7RHUUqWCOdLdZLU2aVWphf1d7racsSzxh53M4xevp451+m7Wa29Ln9rvW4CtKrak9u1sTEQFQIkik5m11q/Gpnsu3KuIh0wW8xi6fvBs7xZrWSchq2QXiVT1Z3DlxsNKuYzgGyYnTx72zvUWmSURNeGpZtFafS7Pjrx8R1Xu69168cyB7q4iQARJnEEcryyzZQ4CKyKDV4fQdP79xIyIiIj9a0/8iqWYoqAQKA0AlweObi81drQXwAyi325Fe2QVD5eA5hmuQqXOrlYZAwE0UK7arKGsowBYYC6Eb6DiJecSiq3AKLo/+vXu83LPDu+H1Qr85uOccXRLRpWKuf7d/p0nU41ZZ1OD83iicrzDHzhUsMyKaEWKmUVrNTz6qV7nttbco6fjjqurVucyuhpw3nBzPjU2U3ON4iAsteb37iq0bfZFmFYI/mMeCEA9CI1WSi3YWquHzJxJu1GT0eWUeKOOGyAiAEQpJRBmRJ1E8wwtE0ERMQvRklKXlVwbb64N8L8A/gVyj1deFDes7AAAAABJRU5ErkJggg==" alt="FORCAP" style={{width:28,height:28,borderRadius:4}} />
           <div><div style={{fontSize:12,fontWeight:700,color:t.t1}}>FORCAP®</div><div style={{fontSize:8,color:t.t3}}>Weekly plan</div></div>
         </div>
         <div style={{padding:"6px 10px",borderBottom:"1px solid "+t.border,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -338,7 +345,7 @@ function App() {
 
           {/* TABS */}
           <div style={{display:"flex",borderBottom:"1px solid "+t.border,marginBottom:10,position:"sticky",top:0,zIndex:3,background:t.bg}}>
-            {[["Agenda","agenda",templates.length],["Action items","actions",openCt],["History","history",meetings.filter(m=>m.status==='completed').length]].map(([label,key,count]) => (
+            {[["Agenda","agenda",templates.length],["Action items","actions",openCt],["History","history",meetings.filter(m=>m.status==='completed').length]].concat(user.role==='admin'?[["Admin","admin",null]]:[]).map(([label,key,count]) => (
               <button key={key} onClick={() => setTab(key)} style={{padding:"9px 16px",background:tab===key?t.s3:"transparent",color:tab===key?t.t1:t.t2,border:"none",borderBottom:tab===key?"2px solid "+t.lime:"2px solid transparent",cursor:"pointer",fontSize:12,fontWeight:tab===key?600:400,fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
                 {label}
                 <span style={{background:tab===key?t.lime:t.t3,color:t.surface,borderRadius:8,padding:"0 6px",fontSize:9,fontWeight:700}}>{count}</span>
@@ -423,6 +430,156 @@ function App() {
               ))}
             </div>
           )}
+
+          {/* ADMIN */}
+          {tab === "admin" && user.role === 'admin' && (
+            <div>
+              {/* Vessels management */}
+              <div style={{marginBottom:20}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                  <span style={{fontSize:13,fontWeight:600,color:t.t1}}>Vessel management</span>
+                  <Btn variant="primary" t={t} onClick={() => setShowAdminModal({type:'vessel',mode:'add'})}>+ Add vessel</Btn>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 120px 100px 80px",padding:"6px 8px",background:t.s2,borderRadius:"6px 6px 0 0",fontSize:9,fontWeight:600,color:t.lime,textTransform:"uppercase"}}>
+                  <span>Name</span><span>Type</span><span>IMO</span><span></span>
+                </div>
+                {adminVessels.map(v => (
+                  <div key={v.id} style={{display:"grid",gridTemplateColumns:"1fr 120px 100px 80px",padding:"8px",background:t.surface,borderBottom:"1px solid "+t.border,alignItems:"center"}}>
+                    <span style={{color:t.t1,fontSize:12,fontWeight:500}}>{v.name}</span>
+                    <span style={{color:t.t2,fontSize:11}}>{v.vessel_type}</span>
+                    <span style={{color:t.t3,fontSize:11}}>{v.imo}</span>
+                    <div style={{display:"flex",gap:6}}>
+                      <button onClick={() => setShowAdminModal({type:'vessel',mode:'edit',item:v})} style={{background:"none",border:"none",color:t.blue,cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>{"\u270e"}</button>
+                      <button onClick={async () => { if(confirm('Remove '+v.name+'?')){ await api('/admin/vessels/'+v.id,{method:'DELETE'}); setAdminVessels(prev=>prev.filter(x=>x.id!==v.id)); setVessels(prev=>prev.filter(x=>x.id!==v.id)); } }} style={{background:"none",border:"none",color:t.red,cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>{"\u00d7"}</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Users management */}
+              <div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                  <span style={{fontSize:13,fontWeight:600,color:t.t1}}>User management</span>
+                  <Btn variant="primary" t={t} onClick={() => setShowAdminModal({type:'user',mode:'add'})}>+ Add user</Btn>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"120px 1fr 100px 1fr 80px",padding:"6px 8px",background:t.s2,borderRadius:"6px 6px 0 0",fontSize:9,fontWeight:600,color:t.lime,textTransform:"uppercase"}}>
+                  <span>Username</span><span>Display name</span><span>Role</span><span>Assigned vessels</span><span></span>
+                </div>
+                {adminUsers.map(u => (
+                  <div key={u.id} style={{display:"grid",gridTemplateColumns:"120px 1fr 100px 1fr 80px",padding:"8px",background:t.surface,borderBottom:"1px solid "+t.border,alignItems:"center"}}>
+                    <span style={{color:t.t1,fontSize:12,fontWeight:500}}>{u.username}</span>
+                    <span style={{color:t.t2,fontSize:11}}>{u.display_name}</span>
+                    <Pill status={u.role==='admin'?'CLOSED':u.role==='superintendent'?'ONGOING':'OPEN'} t={t} />
+                    <span style={{color:t.t3,fontSize:10}}>{(u.vessel_names||[]).join(', ')||'\u2014'}</span>
+                    <div style={{display:"flex",gap:6}}>
+                      <button onClick={() => setShowAdminModal({type:'user',mode:'edit',item:u})} style={{background:"none",border:"none",color:t.blue,cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>{"\u270e"}</button>
+                      <button onClick={async () => { if(confirm('Delete user '+u.username+'?')){ await api('/admin/users/'+u.id,{method:'DELETE'}); setAdminUsers(prev=>prev.filter(x=>x.id!==u.id)); } }} style={{background:"none",border:"none",color:t.red,cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>{"\u00d7"}</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ADMIN MODAL */}
+          {showAdminModal && (() => {
+            const m = showAdminModal;
+            if (m.type === 'vessel') {
+              const VesselForm = () => {
+                const [name, setName] = useState(m.item?.name || '');
+                const [vtype, setVtype] = useState(m.item?.vessel_type || 'LNG DFDE');
+                const [imo, setImo] = useState(m.item?.imo || '');
+                const save = async () => {
+                  if (!name) return;
+                  if (m.mode === 'add') {
+                    const created = await api('/admin/vessels', {method:'POST', body:{name,vessel_type:vtype,imo}});
+                    setAdminVessels(prev => [...prev, created]);
+                    setVessels(prev => [...prev, created]);
+                  } else {
+                    const updated = await api('/admin/vessels/'+m.item.id, {method:'PUT', body:{name,vessel_type:vtype,imo}});
+                    setAdminVessels(prev => prev.map(v => v.id===m.item.id ? updated : v));
+                    setVessels(prev => prev.map(v => v.id===m.item.id ? updated : v));
+                  }
+                  setShowAdminModal(null);
+                };
+                return (
+                  <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <div style={{background:t.surface,borderRadius:10,padding:20,maxWidth:440,width:"95%",border:"1px solid "+t.border}}>
+                      <div style={{fontSize:14,fontWeight:600,color:t.t1,marginBottom:12}}>{m.mode==='add'?'Add vessel':'Edit vessel'}</div>
+                      <div style={{display:"grid",gap:10}}>
+                        <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Vessel name</div><input value={name} onChange={e=>setName(e.target.value)} style={{width:"100%",padding:"6px 8px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:12,fontFamily:"inherit",boxSizing:"border-box"}} /></div>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                          <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Type</div><select value={vtype} onChange={e=>setVtype(e.target.value)} style={{width:"100%",padding:"6px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:12,fontFamily:"inherit"}}><option>LNG DFDE</option><option>LNG TFDE</option><option>LPG FR</option><option>LPG Semi-Ref</option><option>LPG Pressurised</option></select></div>
+                          <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>IMO number</div><input value={imo} onChange={e=>setImo(e.target.value)} style={{width:"100%",padding:"6px 8px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:12,fontFamily:"inherit",boxSizing:"border-box"}} /></div>
+                        </div>
+                      </div>
+                      <div style={{display:"flex",gap:8,marginTop:14,justifyContent:"flex-end"}}><Btn variant="ghost" t={t} onClick={()=>setShowAdminModal(null)}>Cancel</Btn><Btn variant="primary" t={t} onClick={save}>Save</Btn></div>
+                    </div>
+                  </div>
+                );
+              };
+              return <VesselForm />;
+            }
+            if (m.type === 'user') {
+              const UserForm = () => {
+                const [username, setUsername] = useState(m.item?.username || '');
+                const [displayName, setDisplayName] = useState(m.item?.display_name || '');
+                const [role, setRoleVal] = useState(m.item?.role || 'vessel');
+                const [password, setPassword] = useState('');
+                const [selVessels, setSelVessels] = useState([]);
+
+                const toggleVessel = (vid) => {
+                  setSelVessels(prev => prev.includes(vid) ? prev.filter(x=>x!==vid) : [...prev, vid]);
+                };
+
+                const save = async () => {
+                  if (!username || !displayName) return;
+                  if (m.mode === 'add') {
+                    if (!password) return alert('Password required for new user');
+                    await api('/admin/users', {method:'POST', body:{username,password,display_name:displayName,role,vessel_ids:selVessels}});
+                  } else {
+                    const body = {display_name:displayName, role, vessel_ids:selVessels};
+                    if (password) body.password = password;
+                    await api('/admin/users/'+m.item.id, {method:'PUT', body});
+                  }
+                  const refreshed = await api('/admin/users');
+                  setAdminUsers(refreshed);
+                  setShowAdminModal(null);
+                };
+
+                return (
+                  <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <div style={{background:t.surface,borderRadius:10,padding:20,maxWidth:500,width:"95%",border:"1px solid "+t.border}}>
+                      <div style={{fontSize:14,fontWeight:600,color:t.t1,marginBottom:12}}>{m.mode==='add'?'Add user':'Edit user'}</div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                        <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Username</div><input value={username} onChange={e=>setUsername(e.target.value)} disabled={m.mode==='edit'} style={{width:"100%",padding:"6px 8px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:12,fontFamily:"inherit",boxSizing:"border-box",opacity:m.mode==='edit'?.6:1}} /></div>
+                        <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Display name</div><input value={displayName} onChange={e=>setDisplayName(e.target.value)} style={{width:"100%",padding:"6px 8px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:12,fontFamily:"inherit",boxSizing:"border-box"}} /></div>
+                        <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Role</div><select value={role} onChange={e=>setRoleVal(e.target.value)} style={{width:"100%",padding:"6px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:12,fontFamily:"inherit"}}><option value="admin">Admin</option><option value="superintendent">Superintendent</option><option value="vessel">Vessel</option><option value="manager">Manager</option></select></div>
+                        <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>{m.mode==='edit'?'New password (leave blank to keep)':'Password'}</div><input type="password" value={password} onChange={e=>setPassword(e.target.value)} style={{width:"100%",padding:"6px 8px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:12,fontFamily:"inherit",boxSizing:"border-box"}} /></div>
+                      </div>
+                      <div style={{marginTop:12}}>
+                        <div style={{fontSize:9,color:t.t3,marginBottom:4}}>Assign vessels (click to toggle)</div>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                          {adminVessels.map(v => (
+                            <button key={v.id} onClick={() => toggleVessel(v.id)} style={{
+                              padding:"3px 10px",borderRadius:4,fontSize:10,fontFamily:"inherit",cursor:"pointer",
+                              background:selVessels.includes(v.id)?t.lime+"25":"transparent",
+                              color:selVessels.includes(v.id)?t.lime:t.t3,
+                              border:"1px solid "+(selVessels.includes(v.id)?t.lime+"50":t.border),
+                              fontWeight:selVessels.includes(v.id)?600:400,
+                            }}>{v.name}</button>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{display:"flex",gap:8,marginTop:14,justifyContent:"flex-end"}}><Btn variant="ghost" t={t} onClick={()=>setShowAdminModal(null)}>Cancel</Btn><Btn variant="primary" t={t} onClick={save}>Save</Btn></div>
+                    </div>
+                  </div>
+                );
+              };
+              return <UserForm />;
+            }
+            return null;
+          })()}
         </div>
       </div>
     </div>

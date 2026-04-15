@@ -393,6 +393,98 @@ app.get('/api/admin/users', auth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── Admin: create user ───
+app.post('/api/admin/users', auth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+  const { username, password, display_name, role, vessel_ids } = req.body;
+  try {
+    const hash = await bcrypt.hash(password, 10);
+    const q = await pool.query(
+      `INSERT INTO weekly_plan.users (username, password_hash, display_name, role) VALUES ($1,$2,$3,$4) RETURNING id, username, display_name, role`,
+      [username, hash, display_name, role]
+    );
+    const user = q.rows[0];
+    if (vessel_ids && vessel_ids.length) {
+      for (const vid of vessel_ids) {
+        await pool.query('INSERT INTO weekly_plan.user_vessels (user_id, vessel_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [user.id, vid]);
+      }
+    }
+    res.json(user);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Admin: edit user ───
+app.put('/api/admin/users/:id', auth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+  const { display_name, role, password, vessel_ids } = req.body;
+  try {
+    if (password) {
+      const hash = await bcrypt.hash(password, 10);
+      await pool.query('UPDATE weekly_plan.users SET display_name=$1, role=$2, password_hash=$3 WHERE id=$4', [display_name, role, hash, req.params.id]);
+    } else {
+      await pool.query('UPDATE weekly_plan.users SET display_name=$1, role=$2 WHERE id=$3', [display_name, role, req.params.id]);
+    }
+    if (vessel_ids !== undefined) {
+      await pool.query('DELETE FROM weekly_plan.user_vessels WHERE user_id=$1', [req.params.id]);
+      for (const vid of vessel_ids) {
+        await pool.query('INSERT INTO weekly_plan.user_vessels (user_id, vessel_id) VALUES ($1,$2)', [req.params.id, vid]);
+      }
+    }
+    const q = await pool.query(`
+      SELECT u.id, u.username, u.display_name, u.role,
+        ARRAY_AGG(v.id) FILTER (WHERE v.id IS NOT NULL) as vessel_ids,
+        ARRAY_AGG(v.name) FILTER (WHERE v.name IS NOT NULL) as vessel_names
+      FROM weekly_plan.users u
+      LEFT JOIN weekly_plan.user_vessels uv ON u.id = uv.user_id
+      LEFT JOIN weekly_plan.vessels v ON uv.vessel_id = v.id
+      WHERE u.id = $1 GROUP BY u.id
+    `, [req.params.id]);
+    res.json(q.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Admin: delete user ───
+app.delete('/api/admin/users/:id', auth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+  try {
+    await pool.query('DELETE FROM weekly_plan.users WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Admin: vessel management ───
+app.post('/api/admin/vessels', auth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+  const { name, vessel_type, imo } = req.body;
+  try {
+    const q = await pool.query(
+      'INSERT INTO weekly_plan.vessels (name, vessel_type, imo) VALUES ($1,$2,$3) RETURNING *',
+      [name, vessel_type, imo]
+    );
+    res.json(q.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/admin/vessels/:id', auth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+  const { name, vessel_type, imo } = req.body;
+  try {
+    const q = await pool.query(
+      'UPDATE weekly_plan.vessels SET name=$1, vessel_type=$2, imo=$3 WHERE id=$4 RETURNING *',
+      [name, vessel_type, imo, req.params.id]
+    );
+    res.json(q.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/admin/vessels/:id', auth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+  try {
+    await pool.query('UPDATE weekly_plan.vessels SET active = false WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // SPA fallback
 app.get('*', (req, res) => {
   if (!req.path.startsWith('/api/')) {
