@@ -229,6 +229,7 @@ app.delete('/api/agenda-templates/:id', auth, async (req, res) => {
   if (req.user.role === 'manager') return res.status(403).json({ error: 'Forbidden' });
   try {
     await pool.query('UPDATE weekly_plan.agenda_templates SET active = false WHERE id = $1', [req.params.id]);
+    await pool.query('DELETE FROM weekly_plan.agenda_remarks WHERE agenda_item_id = $1', [req.params.id]);
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -239,7 +240,7 @@ app.get('/api/meetings/:mid/remarks', auth, async (req, res) => {
       SELECT ar.*, at.item_number, at.title, at.focus
       FROM weekly_plan.agenda_remarks ar
       JOIN weekly_plan.agenda_templates at ON ar.agenda_item_id = at.id
-      WHERE ar.meeting_id = $1
+      WHERE ar.meeting_id = $1 AND at.active = true
       ORDER BY at.item_number
     `, [req.params.mid]);
     res.json(q.rows);

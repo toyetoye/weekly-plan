@@ -107,7 +107,7 @@ const Cell = ({value, onChange, placeholder, multi, disabled, t}) => {
 // ── Main App ──
 function App() {
   const user = USER();
-  const [theme, setTheme] = useState("dark");
+  const [theme, setTheme] = useState("light");
   const [vessels, setVessels] = useState([]);
   const [selV, setSelV] = useState(null);
   const [crew, setCrew] = useState([]);
@@ -327,6 +327,59 @@ function App() {
         </div>
 
         <div style={{flex:1,overflowY:"auto",padding:"0 18px 18px"}}>
+
+          {/* WEEKLY CALENDAR */}
+          {(() => {
+            const yr = curMeeting?.year || new Date().getFullYear();
+            const completedWks = new Set(meetings.filter(m => m.status === 'completed' && m.year === yr).map(m => m.week_number));
+            const activeWk = curMeeting?.week_number;
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            const weeksInMonth = [5,4,4,5,4,4,5,4,5,4,4,5]; // approximate
+            let wk = 1;
+            return (
+              <div style={{background:t.s2,borderRadius:8,padding:"10px 12px",border:"1px solid "+t.border,marginBottom:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <span style={{fontSize:10,fontWeight:600,color:t.lime,letterSpacing:.8,textTransform:"uppercase"}}>Meeting calendar {yr}</span>
+                  <div style={{display:"flex",gap:10,fontSize:9,color:t.t3}}>
+                    <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:2,background:t.lime,display:"inline-block"}}></span> Completed</span>
+                    <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:2,background:t.red,display:"inline-block"}}></span> Missed</span>
+                    <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:2,background:t.blue,border:"1px solid "+t.blue,display:"inline-block"}}></span> Current</span>
+                    <span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:8,height:8,borderRadius:2,background:t.s3,display:"inline-block"}}></span> Future</span>
+                  </div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(12, 1fr)",gap:4}}>
+                  {months.map((month, mi) => {
+                    const numWks = weeksInMonth[mi];
+                    const cells = [];
+                    for (let i = 0; i < numWks && wk <= 52; i++, wk++) {
+                      const w = wk;
+                      const completed = completedWks.has(w);
+                      const isCurrent = w === activeWk;
+                      const isPast = w < (activeWk || 99);
+                      const missed = isPast && !completed && !isCurrent;
+                      const bg = isCurrent ? t.blue : completed ? t.lime : missed ? t.red : t.s3;
+                      const opacity = isCurrent ? 1 : completed ? 0.8 : missed ? 0.6 : 0.3;
+                      cells.push(
+                        <div key={w} title={"W" + w + (completed?" \u2713":missed?" missed":isCurrent?" (current)":"")} style={{
+                          width:"100%",aspectRatio:"1",borderRadius:2,background:bg,opacity,
+                          border:isCurrent?"2px solid "+t.blue:"none",cursor:"pointer",
+                          display:"flex",alignItems:"center",justifyContent:"center",
+                          fontSize:7,color:completed||isCurrent?"#fff":t.t3,fontWeight:600
+                        }}>{w}</div>
+                      );
+                    }
+                    return (
+                      <div key={mi}>
+                        <div style={{fontSize:8,color:t.t3,textAlign:"center",marginBottom:3,fontWeight:600}}>{month}</div>
+                        <div style={{display:"grid",gridTemplateRows:"repeat("+numWks+", 1fr)",gap:2}}>{cells}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* CREW */}
           <div style={{display:"flex",gap:10,marginBottom:12}}>
             {["deck","engine"].map(dept => {
@@ -355,7 +408,7 @@ function App() {
 
           {/* TABS */}
           <div style={{display:"flex",borderBottom:"1px solid "+t.border,marginBottom:10,position:"sticky",top:0,zIndex:3,background:t.bg}}>
-            {[["Agenda","agenda",templates.length],["Action items","actions",openCt],["History","history",meetings.filter(m=>m.status==='completed').length]].concat(user.role==='admin'?[["Admin","admin",null]]:[]).map(([label,key,count]) => (
+            {[["Agenda","agenda",templates.length],["Action items","actions",openCt],["Defect register","defects",null],["History","history",meetings.filter(m=>m.status==='completed').length]].concat(user.role==='admin'?[["Admin","admin",null]]:[]).map(([label,key,count]) => (
               <button key={key} onClick={() => setTab(key)} style={{padding:"9px 16px",background:tab===key?t.s3:"transparent",color:tab===key?t.t1:t.t2,border:"none",borderBottom:tab===key?"2px solid "+t.lime:"2px solid transparent",cursor:"pointer",fontSize:12,fontWeight:tab===key?600:400,fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
                 {label}
                 <span style={{background:tab===key?t.lime:t.t3,color:t.surface,borderRadius:8,padding:"0 6px",fontSize:9,fontWeight:700}}>{count}</span>
@@ -424,7 +477,7 @@ function App() {
                       <select value={item.condition||'Satisfactory'} disabled={user.role==='manager'} onChange={e => updateAction(item.id,{condition:e.target.value})} style={{padding:"2px 4px",borderRadius:3,border:"1px solid "+t.border,background:t.surface,fontSize:10,fontFamily:"inherit",cursor:user.role==='manager'?"default":"pointer",color:(item.condition||'').toLowerCase().includes('not')||(item.condition||'').toLowerCase().includes('un')?t.red:t.lime}}>
                         <option style={{color:t.lime}} value="Satisfactory">Satisfactory</option>
                         <option style={{color:t.red}} value="NOT SATISFACTORY">Not Satisfactory</option>
-                        <option style={{color:t.red}} value="Unsatisfactory">Unsatisfactory</option>
+                        
                       </select>
                       <Cell value={item.action_plan} onChange={v => updateAction(item.id,{action_plan:v})} multi disabled={user.role==='manager'} t={t} />
                       <Cell value={item.supt_comment} onChange={v => updateAction(item.id,{supt_comment:v})} multi disabled={!canEditS} t={t} placeholder={canEditS?"Supt comment...":""} />
@@ -435,6 +488,32 @@ function App() {
                   ))}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* DEFECT REGISTER */}
+          {tab === "defects" && (
+            <div>
+              <div style={{background:t.s2,borderRadius:8,padding:20,border:"1px solid "+t.border,textAlign:"center",marginBottom:16}}>
+                <div style={{fontSize:28,marginBottom:8}}>{"\ud83d\udd17"}</div>
+                <div style={{fontSize:14,fontWeight:600,color:t.t1,marginBottom:6}}>Defect register</div>
+                <div style={{fontSize:12,color:t.t2,lineHeight:1.6,maxWidth:480,margin:"0 auto",marginBottom:16}}>
+                  The defect register is managed in the FORCAP EOM Logbook. Open items from the logbook are displayed here for reference during the weekly meeting. Changes made in the logbook are reflected here automatically.
+                </div>
+                <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
+                  <a href="https://eom.forcap.io" target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 20px",borderRadius:6,background:t.lime,color:"#0A0F1C",fontSize:12,fontWeight:600,textDecoration:"none",fontFamily:"inherit"}}>Open EOM Logbook {"\u2197"}</a>
+                  <Btn variant="ghost" t={t} onClick={() => window.open('https://eom.forcap.io','_blank')} style={{fontSize:12}}>View defect list {"\u2197"}</Btn>
+                </div>
+              </div>
+
+              <div style={{fontSize:11,fontWeight:600,color:t.t2,marginBottom:8}}>Recent open defects (from EOM logbook)</div>
+              <div style={{display:"grid",gridTemplateColumns:"60px 1fr 1fr 100px 80px",padding:"6px 8px",background:t.s2,borderRadius:"6px 6px 0 0",fontSize:9,fontWeight:600,color:t.lime,textTransform:"uppercase"}}>
+                <span>Ref</span><span>Equipment / system</span><span>Description</span><span>Reported</span><span>Status</span>
+              </div>
+              <div style={{padding:20,background:t.surface,border:"1px solid "+t.border,borderTop:"none",borderRadius:"0 0 6px 6px",textAlign:"center"}}>
+                <div style={{color:t.t3,fontSize:11}}>Defect data will populate here once the EOM Logbook integration is connected.</div>
+                <div style={{color:t.t3,fontSize:10,marginTop:6}}>API endpoint: GET /api/vessels/:id/defects (from EOM module)</div>
+              </div>
             </div>
           )}
 
@@ -629,7 +708,7 @@ function App() {
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                         <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Category</div><select value={cat} onChange={e=>setCatVal(e.target.value)} style={{width:"100%",padding:"5px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:11,fontFamily:"inherit"}}>{CATS.filter(c=>c.code!=='CREW').map(c=><option key={c.code} value={c.code}>{c.code} {"\u2014"} {c.title}</option>)}</select></div>
                         <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Equipment</div><input value={eq} onChange={e=>setEq(e.target.value)} style={{width:"100%",padding:"5px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:11,fontFamily:"inherit",boxSizing:"border-box"}} /></div>
-                        <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Condition</div><select value={cond} onChange={e=>setCond(e.target.value)} style={{width:"100%",padding:"5px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:11,fontFamily:"inherit"}}><option>Satisfactory</option><option>NOT SATISFACTORY</option><option>Unsatisfactory</option></select></div>
+                        <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Condition</div><select value={cond} onChange={e=>setCond(e.target.value)} style={{width:"100%",padding:"5px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:11,fontFamily:"inherit"}}><option>Satisfactory</option><option>NOT SATISFACTORY</option></select></div>
                         <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Status</div><select value={status} onChange={e=>setStatusVal(e.target.value)} style={{width:"100%",padding:"5px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:11,fontFamily:"inherit"}}>{['OPEN','ONGOING','IN HAND','CLOSED'].map(s=><option key={s}>{s}</option>)}</select></div>
                         <div style={{gridColumn:"1/-1"}}><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Action plan</div><textarea value={actionPlan} onChange={e=>setActionPlan(e.target.value)} rows={3} style={{width:"100%",padding:"5px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:11,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}} /></div>
                         <div><div style={{fontSize:9,color:t.t3,marginBottom:2}}>Date reported</div><input type="date" value={reported} onChange={e=>setReported(e.target.value)} style={{width:"100%",padding:"5px",borderRadius:4,border:"1px solid "+t.border,background:t.s2,color:t.t1,fontSize:11,fontFamily:"inherit",boxSizing:"border-box"}} /></div>
