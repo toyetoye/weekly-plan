@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FORCAP® Weekly Plan — Login</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'DM Sans',system-ui,sans-serif; background:#0A0F1C; color:#E8EAF0; min-height:100vh; display:flex; align-items:center; justify-content:center; }
+.card { background:#0F1A2E; border:1px solid rgba(94,177,48,0.15); border-radius:12px; padding:40px; width:380px; max-width:90vw; }
+.logo { display:flex; align-items:center; gap:12px; margin-bottom:32px; justify-content:center; }
+.logo img { width:48px; height:48px; border-radius:8px; }
+.logo-text h1 { font-size:20px; font-weight:700; letter-spacing:0.5px; }
+.logo-text span { font-size:10px; color:#5A6478; }
+label { display:block; font-size:11px; color:#8B95A8; margin-bottom:4px; margin-top:16px; text-transform:uppercase; letter-spacing:0.5px; font-weight:600; }
+input { width:100%; padding:10px 12px; border-radius:6px; border:1px solid rgba(94,177,48,0.15); background:#162240; color:#E8EAF0; font-size:14px; font-family:inherit; outline:none; transition:border-color 0.2s; }
+input:focus { border-color:#5EB130; }
+button { width:100%; padding:12px; border:none; border-radius:6px; background:#5EB130; color:#0A0F1C; font-size:14px; font-weight:600; font-family:inherit; cursor:pointer; margin-top:24px; transition:opacity 0.2s; }
+button:hover { opacity:0.9; }
+button:disabled { opacity:0.5; cursor:default; }
+.error { color:#D94040; font-size:12px; margin-top:12px; text-align:center; display:none; }
+.creds { margin-top:24px; padding-top:16px; border-top:1px solid rgba(94,177,48,0.1); }
+.creds-title { font-size:10px; color:#5A6478; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
+.cred-row { display:flex; justify-content:space-between; padding:3px 0; font-size:11px; }
+.cred-row span:first-child { color:#8B95A8; }
+.cred-row span:last-child { color:#5EB130; font-family:'JetBrains Mono',monospace; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <div class="logo-text">
+      <h1>FORCAP®</h1>
+      <span>Weekly Plan Module</span>
+    </div>
+  </div>
+  <form id="loginForm">
+    <label>Username</label>
+    <input type="text" id="username" placeholder="Enter username" autofocus>
+    <label>Password</label>
+    <input type="password" id="password" placeholder="Enter password">
+    <button type="submit" id="loginBtn">Sign in</button>
+    <div class="error" id="error"></div>
+  </form>
+  <div class="creds">
+    <div class="creds-title">Demo credentials</div>
+    <div class="cred-row"><span>Admin</span><span>admin / Admin@2025!</span></div>
+    <div class="cred-row"><span>Superintendent</span><span>kenzo / Super@2025!</span></div>
+    <div class="cred-row"><span>Vessel (PH2)</span><span>ph2_vessel / Vessel@2025!</span></div>
+    <div class="cred-row"><span>Manager</span><span>manager / Manager@2025!</span></div>
+  </div>
+</div>
+<script>
+// If already logged in, redirect
+if (localStorage.getItem('wp_token')) window.location.href = '/app.html';
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('loginBtn');
+  const err = document.getElementById('error');
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+  err.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: document.getElementById('username').value,
+        password: document.getElementById('password').value,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Login failed');
+    localStorage.setItem('wp_token', data.token);
+    localStorage.setItem('wp_user', JSON.stringify(data.user));
+    window.location.href = '/app.html';
+  } catch (e) {
+    err.textContent = e.message;
+    err.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign in';
+  }
+});
+</script>
+</body>
+</html>

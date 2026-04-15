@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FORCAP® Weekly Plan</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'DM Sans',system-ui,sans-serif; }
+::-webkit-scrollbar { width:6px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:rgba(94,177,48,0.3); border-radius:3px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+// Auth check
+if (!localStorage.getItem('wp_token')) window.location.href = '/';
+</script>
+<script type="text/babel" data-type="module">
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+// ── API helper ──
+const TOKEN = () => localStorage.getItem('wp_token');
+const USER = () => JSON.parse(localStorage.getItem('wp_user') || '{}');
+
+async function api(path, opts = {}) {
+  const res = await fetch('/api' + path, {
+    ...opts,
+    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer ' + TOKEN(), ...opts.headers },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  if (res.status === 401) { localStorage.clear(); window.location.href = '/'; return; }
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'API error');
+  return data;
+}
+
+// ── Theme ──
+const THEMES = {
+  dark: { name:"Dark",bg:"#0A0F1C",surface:"#0F1A2E",s2:"#162240",s3:"#1C2D50",border:"rgba(94,177,48,0.15)",t1:"#E8EAF0",t2:"#8B95A8",t3:"#5A6478",lime:"#5EB130",amber:"#E8A317",red:"#D94040",blue:"#6B8EDB",green:"#007A3D",navy:"#1A3C6E" },
+  dim: { name:"Dim",bg:"#1A1F2E",surface:"#222840",s2:"#2A3050",s3:"#323860",border:"rgba(94,177,48,0.18)",t1:"#E0E4EE",t2:"#8892A8",t3:"#606880",lime:"#5EB130",amber:"#E8A317",red:"#D94040",blue:"#6B8EDB",green:"#007A3D",navy:"#1A3C6E" },
+  light: { name:"Light",bg:"#F4F5F7",surface:"#FFFFFF",s2:"#EDF0F4",s3:"#E2E6EC",border:"rgba(26,60,110,0.12)",t1:"#1A2030",t2:"#4A5568",t3:"#8895A8",lime:"#3D8B1C",amber:"#B8820E",red:"#C03030",blue:"#3B6BC0",green:"#007A3D",navy:"#1A3C6E" },
+};
+
+const CATS = [
+  {code:"A",title:"Main engines / switchboards / propulsion"},{code:"B",title:"Cargo and gas management"},
+  {code:"C",title:"Boilers and economisers"},{code:"D",title:"Deck machinery"},
+  {code:"E",title:"Corrosion protection / antifouling"},{code:"F",title:"Miscellaneous"},
+  {code:"G",title:"Fans"},{code:"H",title:"Engine room compressors"},
+  {code:"I",title:"Pumps"},{code:"J",title:"Chiller systems / package AC"},
+  {code:"K",title:"Navigation / bridge electronics"},{code:"CREW",title:"Crew relief (auto)"},
+];
+const catTitle = c => (CATS.find(x => x.code === c) || {}).title || c;
+
+const dLeft = d => { if (!d) return null; return Math.ceil((new Date(d) - new Date()) / 864e5); };
+const dColor = (d, t) => d === null ? t.t3 : d < 0 ? t.red : d <= 14 ? t.amber : d <= 30 ? t.blue : t.lime;
+const fmtDue = (joined, mo) => {
+  if (!joined) return { date:null, days:null, text:"\u2014" };
+  const d = new Date(joined); d.setMonth(d.getMonth() + mo);
+  const days = Math.ceil((d - new Date()) / 864e5);
+  const dt = d.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
+  const text = days < 0 ? dt+" ("+Math.abs(days)+"d OVERDUE)" : days === 0 ? dt+" (DUE TODAY)" : dt+" ("+days+"d)";
+  return { date:d, days, text };
+};
+
+// ── Shared components ──
+const Pill = ({status, t, onClick}) => {
+  const m = {OPEN:t.amber,CLOSED:t.lime,ONGOING:t.blue,"IN HAND":t.amber};
+  const c = m[status] || t.amber;
+  return <span onClick={onClick} style={{display:"inline-block",padding:"2px 9px",borderRadius:16,fontSize:10,fontWeight:600,background:c+"18",color:c,border:"1px solid "+c+"40",textTransform:"uppercase",cursor:onClick?"pointer":"default",userSelect:"none",whiteSpace:"nowrap"}}>{status}</span>;
+};
+
+const Btn = ({children, onClick, variant, t, disabled, style:sx}) => {
+  const b = {padding:"5px 12px",borderRadius:5,border:"none",cursor:disabled?"default":"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit",opacity:disabled?.4:1,display:"inline-flex",alignItems:"center",gap:4,...sx};
+  const v = {primary:{...b,background:t.lime,color:"#0A0F1C"},ghost:{...b,background:"transparent",color:t.t2,border:"1px solid "+t.border}};
+  return <button onClick={disabled?undefined:onClick} style={v[variant]||{...b,background:t.s3,color:t.t1}}>{children}</button>;
+};
+
+const Cell = ({value, onChange, placeholder, multi, disabled, t}) => {
+  const [ed, setEd] = useState(false);
+  const [draft, setDraft] = useState(value || '');
+  const ref = useRef(null);
+  useEffect(() => { if (ed && ref.current) ref.current.focus(); }, [ed]);
+  useEffect(() => { setDraft(value || ''); }, [value]);
+
+  if (disabled || !ed) return (
+    <div onClick={() => !disabled && setEd(true)} style={{minHeight:24,padding:"4px 6px",borderRadius:3,cursor:disabled?"default":"text",border:"1px solid transparent",color:value?t.t1:t.t3,fontSize:11,lineHeight:1.5}}
+      onMouseEnter={e => {if(!disabled) e.currentTarget.style.borderColor=t.lime+"40";}}
+      onMouseLeave={e => {e.currentTarget.style.borderColor="transparent";}}>
+      {value || placeholder || (disabled ? "\u2014" : "Click to edit...")}
+    </div>
+  );
+
+  const El = multi ? "textarea" : "input";
+  return <El ref={ref} value={draft} onChange={e => setDraft(e.target.value)}
+    onBlur={() => { onChange(draft); setEd(false); }}
+    onKeyDown={e => { if(e.key==="Escape"){setDraft(value||'');setEd(false);} if(!multi&&e.key==="Enter"){onChange(draft);setEd(false);} }}
+    style={{width:"100%",padding:"4px 6px",borderRadius:3,border:"1px solid "+t.lime,background:t.surface,color:t.t1,fontSize:11,fontFamily:"inherit",lineHeight:1.5,resize:multi?"vertical":"none",outline:"none",minHeight:multi?50:24,boxSizing:"border-box"}} />;
+};
+
+// ── Main App ──
+function App() {
+  const user = USER();
+  const [theme, setTheme] = useState("dark");
+  const [vessels, setVessels] = useState([]);
+  const [selV, setSelV] = useState(null);
+  const [crew, setCrew] = useState([]);
+  const [meetings, setMeetings] = useState([]);
+  const [curMeeting, setCurMeeting] = useState(null);
+  const [templates, setTemplates] = useState([]);
+  const [remarks, setRemarks] = useState([]);
+  const [actions, setActions] = useState([]);
+  const [tab, setTab] = useState("agenda");
+  const [loading, setLoading] = useState(true);
+
+  const t = THEMES[theme];
+
+  // Load vessels on mount
+  useEffect(() => {
+    api('/vessels').then(v => { setVessels(v); if (v.length) setSelV(v[0].id); });
+    api('/agenda-templates').then(setTemplates);
+  }, []);
+
+  // Load vessel data when selection changes
+  useEffect(() => {
+    if (!selV) return;
+    setLoading(true);
+    Promise.all([
+      api('/vessels/' + selV + '/crew'),
+      api('/vessels/' + selV + '/meetings'),
+      api('/vessels/' + selV + '/actions'),
+    ]).then(([c, m, a]) => {
+      setCrew(c);
+      setMeetings(m);
+      setActions(a);
+      // Find or create current week's meeting
+      const now = new Date();
+      const wk = getWeekNumber(now);
+      const yr = now.getFullYear();
+      const cur = m.find(x => x.week_number === wk && x.year === yr);
+      if (cur) {
+        setCurMeeting(cur);
+        api('/meetings/' + cur.id + '/remarks').then(setRemarks);
+      } else {
+        api('/vessels/' + selV + '/meetings', { method:'POST', body:{ week_number:wk, year:yr } }).then(mtg => {
+          setCurMeeting(mtg);
+          api('/meetings/' + mtg.id + '/remarks').then(setRemarks);
+          setMeetings(prev => [mtg, ...prev]);
+        });
+      }
+      setLoading(false);
+    });
+  }, [selV]);
+
+  const getWeekNumber = (d) => {
+    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    return Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+  };
+
+  const vessel = vessels.find(v => v.id === selV);
+  const openCt = actions.filter(a => a.status !== 'CLOSED').length;
+  const critCt = actions.filter(a => { const c = (a.condition||'').toLowerCase(); return c.includes('not') || c.includes('un'); }).length;
+  const filledCt = remarks.filter(r => r.vessel_remark).length;
+  const crewDueCt = crew.filter(c => { const f = fmtDue(c.joined, c.contract_months); return f.days !== null && f.days <= 14; }).length;
+  const canEditV = (user.role === 'vessel' || user.role === 'admin') && curMeeting?.status !== 'completed';
+  const canEditS = (user.role === 'superintendent' || user.role === 'admin') && (curMeeting?.status === 'in_progress' || curMeeting?.status === 'completed');
+
+  const advanceMeeting = async () => {
+    if (!curMeeting) return;
+    const flow = ['draft','vessel_prep','in_progress','completed'];
+    const idx = flow.indexOf(curMeeting.status);
+    if (idx >= flow.length - 1) return;
+    const next = flow[idx + 1];
+    const updated = await api('/meetings/' + curMeeting.id + '/status', { method:'PUT', body:{ status:next } });
+    setCurMeeting(updated);
+    if (next === 'completed') {
+      const newRemarks = await api('/meetings/' + curMeeting.id + '/remarks');
+      setRemarks(newRemarks);
+    }
+  };
+
+  const reopenMeeting = async () => {
+    const updated = await api('/meetings/' + curMeeting.id + '/status', { method:'PUT', body:{ status:'in_progress' } });
+    setCurMeeting(updated);
+  };
+
+  const updateRemark = async (remarkId, field, value) => {
+    const body = {};
+    body[field] = value;
+    await api('/remarks/' + remarkId, { method:'PUT', body });
+    setRemarks(prev => prev.map(r => r.id === remarkId ? { ...r, [field]:value } : r));
+  };
+
+  const updateAction = async (actionId, updates) => {
+    const updated = await api('/actions/' + actionId, { method:'PUT', body:updates });
+    setActions(prev => prev.map(a => a.id === actionId ? updated : a));
+  };
+
+  const cycleStatus = async (actionId) => {
+    if (user.role === 'manager') return;
+    const item = actions.find(a => a.id === actionId);
+    const order = ['OPEN','ONGOING','IN HAND','CLOSED'];
+    const next = order[(order.indexOf(item.status) + 1) % order.length];
+    await updateAction(actionId, { status:next });
+  };
+
+  const deleteAction = async (id) => {
+    if (!confirm('Delete this action item?')) return;
+    await api('/actions/' + id, { method:'DELETE' });
+    setActions(prev => prev.filter(a => a.id !== id));
+  };
+
+  const addAction = async (form) => {
+    const created = await api('/vessels/' + selV + '/actions', { method:'POST', body:form });
+    setActions(prev => [...prev, created]);
+  };
+
+  const logout = () => { localStorage.clear(); window.location.href = '/'; };
+
+  const stC = {draft:t.t3,vessel_prep:t.amber,in_progress:t.lime,completed:t.blue};
+  const stL = {draft:"Draft",vessel_prep:"Vessel prep",in_progress:"In progress",completed:"Completed"};
+  const fB = a => ({padding:"2px 8px",borderRadius:3,fontSize:10,fontWeight:a?600:400,background:a?t.s3:"transparent",color:a?t.t1:t.t3,border:a?"1px solid "+t.border:"1px solid transparent",cursor:"pointer",fontFamily:"inherit"});
+  const [fCat, setFCat] = useState("ALL");
+  const [fSt, setFSt] = useState("ALL");
+  const filtAct = actions.filter(a => (fCat==="ALL"||a.category===fCat) && (fSt==="ALL"||a.status===fSt));
+  const grp = {};
+  filtAct.forEach(a => { if (!grp[a.category]) grp[a.category] = []; grp[a.category].push(a); });
+
+  if (loading && !vessel) return <div style={{minHeight:"100vh",background:t.bg,display:"flex",alignItems:"center",justifyContent:"center",color:t.t2}}>Loading...</div>;
+
+  return (
+    <div style={{minHeight:"100vh",background:t.bg,color:t.t1,fontFamily:"'DM Sans',system-ui,sans-serif",display:"flex"}}>
+      {/* SIDEBAR */}
+      <div style={{width:210,background:t.surface,borderRight:"1px solid "+t.border,display:"flex",flexDirection:"column",flexShrink:0}}>
+        <div style={{padding:"10px 12px",borderBottom:"1px solid "+t.border,display:"flex",alignItems:"center",gap:8}}>
+          <div style={{width:28,height:28,borderRadius:5,background:t.navy,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:t.lime}}>F</div>
+          <div><div style={{fontSize:12,fontWeight:700,color:t.t1}}>FORCAP®</div><div style={{fontSize:8,color:t.t3}}>Weekly plan</div></div>
+        </div>
+        <div style={{padding:"6px 10px",borderBottom:"1px solid "+t.border,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:10,color:t.t2}}>{user.display_name}</span>
+          <button onClick={logout} style={{background:"none",border:"none",color:t.t3,cursor:"pointer",fontSize:9,fontFamily:"inherit"}}>Logout</button>
+        </div>
+        <div style={{padding:"6px 10px",borderBottom:"1px solid "+t.border,display:"flex",gap:3}}>
+          {Object.entries(THEMES).map(([k,v]) => (
+            <button key={k} onClick={() => setTheme(k)} style={{flex:1,padding:"2px 0",borderRadius:3,fontSize:9,fontWeight:theme===k?600:400,background:theme===k?t.s3:"transparent",color:theme===k?t.t1:t.t3,border:theme===k?"1px solid "+t.border:"1px solid transparent",cursor:"pointer",fontFamily:"inherit"}}>{v.name}</button>
+          ))}
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"6px 8px"}}>
+          <div style={{fontSize:8,fontWeight:600,color:t.t3,letterSpacing:.8,textTransform:"uppercase",marginBottom:4}}>Fleet ({vessels.length})</div>
+          {vessels.map(v => (
+            <div key={v.id} onClick={() => setSelV(v.id)} style={{padding:"6px 7px",borderRadius:4,cursor:"pointer",marginBottom:1,background:selV===v.id?t.s3:"transparent",borderLeft:selV===v.id?"2px solid "+t.lime:"2px solid transparent"}}>
+              <div style={{fontSize:11,fontWeight:selV===v.id?600:400,color:selV===v.id?t.t1:t.t2}}>{v.name}</div>
+              <div style={{fontSize:9,color:t.t3}}>{v.vessel_type}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{padding:"8px 10px",borderTop:"1px solid "+t.border,fontSize:9,color:t.t3,textAlign:"center"}}>
+          Role: {user.role}
+        </div>
+      </div>
+
+      {/* MAIN */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
+        {/* TOP BAR */}
+        <div style={{padding:"8px 18px",borderBottom:"1px solid "+t.border,background:t.surface,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:15,fontWeight:700}}>{vessel?.name}</span>
+            <span style={{fontSize:10,color:t.t3}}>IMO {vessel?.imo}</span>
+            {curMeeting && <div style={{padding:"2px 9px",borderRadius:12,fontSize:10,fontWeight:600,background:t.s3,color:t.t2,border:"1px solid "+t.border,fontFamily:"'JetBrains Mono',monospace"}}>W{curMeeting.week_number} · {curMeeting.year}</div>}
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {curMeeting && <div style={{display:"flex",alignItems:"center",gap:2}}>
+              {["draft","vessel_prep","in_progress","completed"].map((s,i,arr) => {
+                const on = arr.indexOf(curMeeting.status) >= i;
+                const cur = curMeeting.status === s;
+                return <div key={s} style={{display:"flex",alignItems:"center",gap:2}}>
+                  <div style={{width:cur?"auto":6,height:6,borderRadius:cur?7:3,background:on?stC[curMeeting.status]:t.t3,padding:cur?"1px 7px":0,fontSize:8,fontWeight:600,color:t.surface,display:"flex",alignItems:"center"}}>{cur && stL[s]}</div>
+                  {i<3 && <div style={{width:10,height:1,background:on?stC[curMeeting.status]:t.t3,opacity:.3}} />}
+                </div>;
+              })}
+            </div>}
+            {curMeeting?.status === 'completed' && (user.role === 'admin' || user.role === 'superintendent') && <Btn variant="ghost" t={t} onClick={reopenMeeting}>Reopen</Btn>}
+            {curMeeting && curMeeting.status !== 'completed' && <Btn variant="primary" t={t} onClick={advanceMeeting}>{curMeeting.status === 'in_progress' ? 'Close meeting' : 'Advance \u2192'}</Btn>}
+          </div>
+        </div>
+
+        {/* KPIs */}
+        <div style={{display:"flex",gap:8,padding:"10px 18px",flexWrap:"wrap"}}>
+          {[
+            {l:"Open actions",v:openCt,tot:actions.length,c:t.amber,k:"open"},
+            {l:"Agenda filled",v:filledCt,tot:templates.length,c:t.lime,k:"agenda"},
+            {l:"Critical",v:critCt,c:t.red,k:"critical"},
+            {l:"Crew due \u226414d",v:crewDueCt,c:crewDueCt>0?t.amber:t.lime,k:"crew"},
+          ].map((c,i) => (
+            <div key={i} onClick={() => { if(c.k==="open"||c.k==="critical") setTab("actions"); else if(c.k==="agenda") setTab("agenda"); }}
+              style={{background:t.s2,borderRadius:6,padding:"8px 14px",border:"1px solid "+t.border,minWidth:110,cursor:"pointer"}}>
+              <div style={{fontSize:9,color:t.t3,textTransform:"uppercase",letterSpacing:.3}}>{c.l}</div>
+              <span style={{fontSize:20,fontWeight:700,color:c.c}}>{c.v}</span>
+              {c.tot !== undefined && <span style={{fontSize:10,color:t.t3}}> / {c.tot}</span>}
+            </div>
+          ))}
+        </div>
+
+        <div style={{flex:1,overflowY:"auto",padding:"0 18px 18px"}}>
+          {/* CREW */}
+          <div style={{display:"flex",gap:10,marginBottom:12}}>
+            {["deck","engine"].map(dept => {
+              const m = crew.filter(c => c.department === dept);
+              return (
+                <div key={dept} style={{background:t.s2,borderRadius:8,padding:12,border:"1px solid "+t.border,flex:1}}>
+                  <div style={{fontSize:10,fontWeight:600,color:t.lime,letterSpacing:.8,textTransform:"uppercase",marginBottom:6}}>{dept} department</div>
+                  <div style={{display:"grid",gridTemplateColumns:"100px 1fr 40px 1fr",fontSize:9,color:t.t3,fontWeight:600,marginBottom:3,padding:"0 2px"}}>
+                    <span>Rank</span><span>Name</span><span>Mo</span><span>Due date</span>
+                  </div>
+                  {m.map((c,i) => {
+                    const f = fmtDue(c.joined, c.contract_months);
+                    return (
+                      <div key={c.id} style={{display:"grid",gridTemplateColumns:"100px 1fr 40px 1fr",padding:"4px 2px",borderBottom:i<m.length-1?"1px solid "+t.border:"none",alignItems:"center"}}>
+                        <span style={{color:t.t2,fontSize:11}}>{c.rank}</span>
+                        <span style={{color:t.t1,fontSize:11,fontWeight:500}}>{c.name}</span>
+                        <span style={{color:t.t3,fontSize:10}}>{c.contract_months}</span>
+                        <span style={{color:dColor(f.days,t),fontSize:10,fontWeight:600}}>{f.text}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* TABS */}
+          <div style={{display:"flex",borderBottom:"1px solid "+t.border,marginBottom:10,position:"sticky",top:0,zIndex:3,background:t.bg}}>
+            {[["Agenda","agenda",templates.length],["Action items","actions",openCt],["History","history",meetings.filter(m=>m.status==='completed').length]].map(([label,key,count]) => (
+              <button key={key} onClick={() => setTab(key)} style={{padding:"9px 16px",background:tab===key?t.s3:"transparent",color:tab===key?t.t1:t.t2,border:"none",borderBottom:tab===key?"2px solid "+t.lime:"2px solid transparent",cursor:"pointer",fontSize:12,fontWeight:tab===key?600:400,fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
+                {label}
+                <span style={{background:tab===key?t.lime:t.t3,color:t.surface,borderRadius:8,padding:"0 6px",fontSize:9,fontWeight:700}}>{count}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* AGENDA */}
+          {tab === "agenda" && (
+            <div>
+              <div style={{display:"grid",gridTemplateColumns:"28px 1fr 1.3fr 1.3fr 1.3fr",gap:1,padding:"6px 8px",background:t.s2,borderRadius:"6px 6px 0 0"}}>
+                {["#","Agenda item","Vessel remark","Shore comment","New actions"].map((h,i) => <span key={i} style={{fontSize:9,fontWeight:600,color:t.lime,letterSpacing:.4,textTransform:"uppercase"}}>{h}</span>)}
+              </div>
+              {remarks.map(r => (
+                <div key={r.id} style={{display:"grid",gridTemplateColumns:"28px 1fr 1.3fr 1.3fr 1.3fr",gap:1,padding:"5px 8px",background:t.surface,borderBottom:"1px solid "+t.border}}>
+                  <span style={{color:t.t3,fontSize:12,fontWeight:600}}>{r.item_number}</span>
+                  <div><div style={{color:t.t1,fontSize:11,fontWeight:600}}>{r.title}</div><div style={{color:t.t3,fontSize:9}}>{r.focus}</div></div>
+                  <Cell value={r.vessel_remark} onChange={v => updateRemark(r.id,'vessel_remark',v)} multi disabled={!canEditV} t={t} />
+                  <Cell value={r.shore_comment} onChange={v => updateRemark(r.id,'shore_comment',v)} multi disabled={!canEditS} t={t} />
+                  <Cell value={r.new_actions} onChange={v => updateRemark(r.id,'new_actions',v)} multi disabled={!canEditS} t={t} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ACTIONS */}
+          {tab === "actions" && (
+            <div>
+              <div style={{display:"flex",gap:4,marginBottom:10,flexWrap:"wrap",alignItems:"center"}}>
+                <span style={{color:t.t3,fontSize:10}}>Category:</span>
+                <button onClick={() => setFCat("ALL")} style={fB(fCat==="ALL")}>All</button>
+                {CATS.filter(c=>c.code!=="CREW").map(c => {
+                  const n = actions.filter(a=>a.category===c.code&&a.status!=="CLOSED").length;
+                  if(n===0&&fCat!==c.code) return null;
+                  return <button key={c.code} onClick={() => setFCat(c.code)} style={fB(fCat===c.code)}>{c.code} \u2014 {c.title.split("/")[0].trim()} ({n})</button>;
+                })}
+                <span style={{color:t.t3,margin:"0 2px"}}>|</span>
+                {["ALL","OPEN","ONGOING","IN HAND","CLOSED"].map(s => (
+                  <button key={s} onClick={() => setFSt(s)} style={fB(fSt===s)}>{s==="ALL"?"All ("+openCt+")":s+" ("+actions.filter(a=>a.status===s).length+")"}</button>
+                ))}
+                {user.role !== 'manager' && <Btn variant="primary" t={t} onClick={() => {
+                  const eq = prompt("Equipment name:");
+                  if (!eq) return;
+                  const cat = prompt("Category (A-K):", "A");
+                  addAction({ category:cat||"A", equipment:eq, condition:"Satisfactory", action_plan:"", status:"OPEN" });
+                }} style={{marginLeft:8,fontSize:10}}>+ Add item</Btn>}
+              </div>
+              {Object.entries(grp).sort(([a],[b])=>a.localeCompare(b)).map(([cat,items]) => (
+                <div key={cat} style={{marginBottom:14}}>
+                  <div style={{padding:"5px 8px",background:t.s2,borderRadius:"5px 5px 0 0",borderLeft:"3px solid "+t.lime,display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{color:t.lime,fontSize:12,fontWeight:700}}>{cat}</span>
+                    <span style={{color:t.t2,fontSize:10}}>{catTitle(cat)}</span>
+                  </div>
+                  {items.map(item => (
+                    <div key={item.id} style={{display:"grid",gridTemplateColumns:"1fr .6fr 2fr 80px 70px 50px",gap:6,padding:"6px 8px",background:t.surface,borderBottom:"1px solid "+t.border,alignItems:"start"}}>
+                      <div style={{color:t.t1,fontSize:11,fontWeight:600}}>{item.equipment}</div>
+                      <div style={{color:(item.condition||'').toLowerCase().includes('not')||(item.condition||'').toLowerCase().includes('un')?t.red:t.lime,fontSize:10}}>{item.condition}</div>
+                      <Cell value={item.action_plan} onChange={v => updateAction(item.id,{action_plan:v})} multi disabled={user.role==='manager'} t={t} />
+                      <Pill status={item.status} t={t} onClick={() => cycleStatus(item.id)} />
+                      <span style={{color:t.t3,fontSize:9}}>{item.date_reported?.slice(0,10)||"\u2014"}</span>
+                      {user.role !== 'manager' && <button onClick={() => deleteAction(item.id)} style={{background:"none",border:"none",color:t.red,cursor:"pointer",fontSize:9,fontFamily:"inherit"}}>{"\u00d7"}</button>}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* HISTORY */}
+          {tab === "history" && (
+            <div>
+              <div style={{display:"grid",gridTemplateColumns:"60px 1fr 100px 100px",padding:"5px 8px",fontSize:9,fontWeight:600,color:t.t3,textTransform:"uppercase",background:t.s2,borderRadius:"5px 5px 0 0"}}>
+                <span>Week</span><span>Status</span><span>Created</span><span>Closed</span>
+              </div>
+              {meetings.map(m => (
+                <div key={m.id} style={{display:"grid",gridTemplateColumns:"60px 1fr 100px 100px",padding:"8px",background:t.surface,borderBottom:"1px solid "+t.border,alignItems:"center"}}>
+                  <span style={{color:t.t1,fontSize:12,fontWeight:600}}>W{m.week_number}/{m.year}</span>
+                  <Pill status={m.status==='completed'?'CLOSED':'OPEN'} t={t} />
+                  <span style={{color:t.t3,fontSize:10}}>{m.created_at?.slice(0,10)}</span>
+                  <span style={{color:t.t3,fontSize:10}}>{m.closed_at?.slice(0,10)||"\u2014"}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
